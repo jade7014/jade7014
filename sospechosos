@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sospechosos</title>
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      background-color: #121212;
+      color: white;
+      text-align: center;
+      margin: 0;
+      padding: 0;
+    }
+    h1 {
+      margin-top: 20px;
+      color: #00ffff;
+    }
+    input, button, select {
+      padding: 10px;
+      margin: 10px;
+      border-radius: 10px;
+      border: none;
+      font-size: 16px;
+    }
+    #game, #roleDisplay, #voteArea {
+      display: none;
+    }
+    .playerList {
+      margin-top: 10px;
+    }
+    .dead {
+      text-decoration: line-through;
+      color: grey;
+    }
+    .role {
+      font-size: 24px;
+      margin-top: 20px;
+    }
+    .btn {
+      background-color: #ff0055;
+      color: white;
+    }
+    .btn.cooldown {
+      background-color: grey;
+    }
+    .voteBtn {
+      background-color: #444;
+      margin: 5px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Sospechosos</h1>
+
+  <div id="startMenu">
+    <input type="text" id="playerName" placeholder="Tu nombre">
+    <input type="text" id="roomCode" placeholder="Código de sala">
+    <button onclick="joinRoom()">Unirse</button>
+  </div>
+
+  <div id="game">
+    <h2>Sala: <span id="roomName"></span></h2>
+    <div id="players"></div>
+    <button id="startBtn" onclick="startGame()">Iniciar partida</button>
+    <div id="roleDisplay" class="role"></div>
+    <div>
+      <button class="btn" onclick="reportBody()">Cuerpo encontrado</button>
+      <button class="btn" id="meetingBtn" onclick="callMeeting()">Reunión de emergencia</button>
+      <button class="btn" onclick="markAsDead()">Estoy muerto</button>
+    </div>
+    <div id="voteArea"></div>
+  </div>
+
+  <script>
+    const roles = ['Impostor', 'Tripulante', 'Médico', 'Vigilante', 'Protector'];
+    const colors = {
+      'Impostor': 'red',
+      'Tripulante': 'white',
+      'Médico': 'lime',
+      'Vigilante': 'cyan',
+      'Protector': 'yellow'
+    };
+
+    let room = {
+      code: '',
+      players: [],
+      started: false,
+      votes: {},
+    };
+
+    let myName = '';
+    let myRole = '';
+    let isDead = false;
+    let meetingCooldown = false;
+
+    function joinRoom() {
+      myName = document.getElementById('playerName').value;
+      room.code = document.getElementById('roomCode').value.toUpperCase();
+      if (!myName || !room.code) return alert('Completa tu nombre y el código');
+
+      room.players.push({ name: myName, dead: false });
+      document.getElementById('startMenu').style.display = 'none';
+      document.getElementById('game').style.display = 'block';
+      document.getElementById('roomName').textContent = room.code;
+      updatePlayerList();
+    }
+
+    function updatePlayerList() {
+      const playersDiv = document.getElementById('players');
+      playersDiv.innerHTML = '<h3>Jugadores:</h3>';
+      room.players.forEach(p => {
+        const div = document.createElement('div');
+        div.textContent = p.name;
+        if (p.dead) div.classList.add('dead');
+        playersDiv.appendChild(div);
+      });
+    }
+
+    function startGame() {
+      if (room.players.length < 3) return alert('Mínimo 3 jugadores');
+      room.started = true;
+      assignRoles();
+      document.getElementById('startBtn').style.display = 'none';
+    }
+
+    function assignRoles() {
+      const shuffled = room.players.sort(() => 0.5 - Math.random());
+      shuffled.forEach((p, i) => {
+        p.role = roles[i % roles.length];
+        if (p.name === myName) {
+          myRole = p.role;
+          showMyRole();
+        }
+      });
+    }
+
+    function showMyRole() {
+      const roleDisplay = document.getElementById('roleDisplay');
+      roleDisplay.textContent = `Tu rol: ${myRole}`;
+      roleDisplay.style.display = 'block';
+      roleDisplay.style.color = colors[myRole];
+    }
+
+    function reportBody() {
+      if (isDead) return;
+      startVoting('¡Un cuerpo ha sido encontrado!');
+    }
+
+    function callMeeting() {
+      if (isDead || meetingCooldown) return;
+      meetingCooldown = true;
+      document.getElementById('meetingBtn').classList.add('cooldown');
+      startVoting('¡Reunión de emergencia!');
+      setTimeout(() => {
+        meetingCooldown = false;
+        document.getElementById('meetingBtn').classList.remove('cooldown');
+      }, 90000);
+    }
+
+    function markAsDead() {
+      isDead = true;
+      const me = room.players.find(p => p.name === myName);
+      if (me) me.dead = true;
+      updatePlayerList();
+    }
+
+    function startVoting(reason) {
+      const voteArea = document.getElementById('voteArea');
+      voteArea.innerHTML = `<h3>${reason}</h3><p>Vota a alguien para expulsarlo:</p>`;
+      room.votes = {};
+
+      room.players.forEach(p => {
+        if (!p.dead) {
+          const btn = document.createElement('button');
+          btn.textContent = p.name;
+          btn.classList.add('voteBtn');
+          btn.onclick = () => castVote(p.name);
+          voteArea.appendChild(btn);
+        }
+      });
+
+      document.getElementById('voteArea').style.display = 'block';
+    }
+
+    function castVote(name) {
+      room.votes[myName] = name;
+      alert(`Votaste por ${name}`);
+
+      if (Object.keys(room.votes).length === room.players.filter(p => !p.dead).length) {
+        finishVoting();
+      }
+    }
+
+    function finishVoting() {
+      const tally = {};
+      Object.values(room.votes).forEach(v => tally[v] = (tally[v] || 0) + 1);
+      const sorted = Object.entries(tally).sort((a, b) => b[1] - a[1]);
+      const [topName, topVotes] = sorted[0];
+      const secondVotes = sorted[1]?.[1] || 0;
+
+      if (topVotes === secondVotes) {
+        alert('Empate, nadie fue expulsado.');
+      } else {
+        const kicked = room.players.find(p => p.name === topName);
+        if (kicked) kicked.dead = true;
+        alert(`${topName} fue expulsado.`);
+        if (topName === myName) isDead = true;
+      }
+
+      document.getElementById('voteArea').style.display = 'none';
+      updatePlayerList();
+    }
+  </script>
+</body>
+</html>
